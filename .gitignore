@@ -1,0 +1,21 @@
+# Python backend
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+
+# Database
+*.db
+
+# Frontend
+node_modules/
+.next/
+dist/
+build/
+
+# Environment
+.env
+.env.local
