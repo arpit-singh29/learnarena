@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import json
 
 from app.database import get_db
-from app.models import User, UserAnalytics
+from app.models import User, UserAnalytics, Answer
 from app.schemas import AnalyticsResponse, DNAReport, SubjectStat
 from app.deps import get_current_user
 from app.services import analytics_service
@@ -22,7 +22,6 @@ def my_analytics(
     ).first()
 
     if not analytics:
-        # First time — calculate from scratch
         analytics = analytics_service.recalculate(db, user.id)
 
     raw_breakdown = json.loads(analytics.subject_breakdown or "{}")
@@ -54,9 +53,16 @@ def my_dna_report(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
+    # Block report if user has zero activity
+    total_answers = db.query(Answer).filter(Answer.user_id == user.id).count()
+    if total_answers == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No activity yet. Solve some questions first to generate your DNA report!"
+        )
+
     report = analytics_service.generate_dna_report(db, user.id)
 
-    # convert subject_breakdown dict → SubjectStat objects
     report["subject_breakdown"] = {
         subj: SubjectStat(**data)
         for subj, data in report["subject_breakdown"].items()

@@ -158,3 +158,105 @@ class UserAnalytics(Base):
     subject_breakdown    = Column(String, default="{}")
 
     updated_at           = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# ─────────────────────────────────────────────
+#  FRIEND REQUEST
+#  status: "pending" | "accepted" | "rejected"
+# ─────────────────────────────────────────────
+class FriendRequest(Base):
+    __tablename__ = "friend_requests"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    sender_id   = Column(Integer, ForeignKey("users.id"), nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status      = Column(String, default="pending")   # pending|accepted|rejected
+    created_at  = Column(DateTime, server_default=func.now())
+
+
+# ─────────────────────────────────────────────
+#  CHALLENGE
+#  mode: "accuracy" | "speed" | "mixed"
+#  status: "pending" | "active" | "completed" | "declined"
+# ─────────────────────────────────────────────
+class Challenge(Base):
+    __tablename__ = "challenges"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    challenger_id   = Column(Integer, ForeignKey("users.id"), nullable=False)
+    opponent_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id       = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    mode            = Column(String, default="mixed")      # accuracy|speed|mixed
+    status          = Column(String, default="pending")    # pending|active|completed|declined
+    question_count  = Column(Integer, default=5)
+
+    # scores filled in when each side completes
+    challenger_score   = Column(Integer, nullable=True)
+    opponent_score     = Column(Integer, nullable=True)
+    challenger_accuracy = Column(Float, nullable=True)
+    opponent_accuracy   = Column(Float, nullable=True)
+    challenger_time    = Column(Float, nullable=True)
+    opponent_time      = Column(Float, nullable=True)
+
+    winner_id       = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    completed_at    = Column(DateTime, nullable=True)
+
+
+# ─────────────────────────────────────────────
+#  BADGE DEFINITION  (seeded once)
+# ─────────────────────────────────────────────
+class Badge(Base):
+    __tablename__ = "badges"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    name        = Column(String, unique=True, nullable=False)
+    description = Column(String, nullable=False)
+    icon        = Column(String, default="🏅")      # emoji
+    condition   = Column(String, nullable=False)     # machine-readable key
+
+
+# ─────────────────────────────────────────────
+#  USER BADGE  (awarded badges)
+# ─────────────────────────────────────────────
+class UserBadge(Base):
+    __tablename__ = "user_badges"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    badge_id    = Column(Integer, ForeignKey("badges.id"), nullable=False)
+    awarded_at  = Column(DateTime, server_default=func.now())
+
+
+# ─────────────────────────────────────────────
+#  ELO RATING
+# ─────────────────────────────────────────────
+class EloRating(Base):
+    __tablename__ = "elo_ratings"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    rating     = Column(Integer, default=1000)       # start at 1000 like chess
+    wins       = Column(Integer, default=0)
+    losses     = Column(Integer, default=0)
+    draws      = Column(Integer, default=0)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+# ─────────────────────────────────────────────
+#  NOTIFICATION
+#  type: "friend_request" | "friend_accepted" |
+#        "challenge_received" | "challenge_accepted" |
+#        "challenge_completed" | "badge_earned"
+# ─────────────────────────────────────────────
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)  # recipient
+    type       = Column(String, nullable=False)
+    title      = Column(String, nullable=False)
+    message    = Column(String, nullable=False)
+    link       = Column(String, nullable=True)   # e.g. "/challenges" or "/friends"
+    is_read    = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())

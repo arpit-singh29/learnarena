@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_admin
 from app.models import User
 from app.schemas import QuestionCreate, AnswerCreate
 from app.services import question_service
@@ -15,7 +15,7 @@ router = APIRouter(tags=["Questions"])
 def create_question(
     data: QuestionCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_admin)   # ✅ admin only now
 ):
 
     return question_service.create_question(
@@ -46,7 +46,7 @@ def get_questions(
 def submit_answer(
     data: AnswerCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user)   # ✅ stays as-is — any logged-in user can ANSWER quiz questions
 ):
 
     result = question_service.submit_answer(

@@ -3,31 +3,19 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
-import { courseApi, questionApi, analyticsApi, Course, Analytics } from "@/lib/api"
+import { courseApi, analyticsApi, Course, Analytics } from "@/lib/api"
 
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
 
-  const [courses, setCourses] = useState<Course[]>([])
+  const [courses, setCourses]     = useState<Course[]>([])
   const [myCourses, setMyCourses] = useState<Course[]>([])
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [pageLoading, setPageLoading] = useState(true)
-  const [enrolling, setEnrolling] = useState<number | null>(null)
+  const [enrolling, setEnrolling]     = useState<number | null>(null)
 
-  // Upload question state
-  const [showUpload, setShowUpload] = useState(false)
-  const [qForm, setQForm] = useState({
-    title: "",
-    description: "",
-    course_id: "",
-    options: ["", "", "", ""],
-    correct_option: "",
-    difficulty: "medium",
-    subject: "",
-  })
-  const [uploading, setUploading] = useState(false)
-  const [uploadMsg, setUploadMsg] = useState("")
+  const isAdmin = user?.role === "admin"
 
   useEffect(() => {
     if (!loading && !user) router.push("/login")
@@ -59,35 +47,6 @@ export default function DashboardPage() {
     setEnrolling(null)
   }
 
-  const handleOptionChange = (idx: number, val: string) => {
-    const opts = [...qForm.options]
-    opts[idx] = val
-    setQForm((p) => ({ ...p, options: opts }))
-  }
-
-  const handleUploadSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setUploading(true)
-    setUploadMsg("")
-    try {
-      await questionApi.create({
-        title: qForm.title,
-        description: qForm.description,
-        course_id: Number(qForm.course_id),
-        options: qForm.options.filter(Boolean),
-        correct_option: qForm.correct_option,
-        difficulty: qForm.difficulty,
-        subject: qForm.subject,
-      })
-      setUploadMsg("Question uploaded successfully!")
-      setQForm({ title: "", description: "", course_id: "", options: ["", "", "", ""], correct_option: "", difficulty: "medium", subject: "" })
-      setShowUpload(false)
-    } catch (err: any) {
-      setUploadMsg(err?.response?.data?.detail || "Upload failed.")
-    }
-    setUploading(false)
-  }
-
   const enrolledIds = new Set(myCourses.map((c) => c.id))
 
   if (loading || pageLoading) {
@@ -110,12 +69,16 @@ export default function DashboardPage() {
             {analytics?.total_attempted ?? 0} questions solved so far
           </p>
         </div>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
-        >
-          + Upload question
-        </button>
+
+        {/* Admin-only: manage question bank */}
+        {isAdmin && (
+          <Link
+            href="/admin/questions"
+            className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors"
+          >
+            📚 Manage questions
+          </Link>
+        )}
       </div>
 
       {/* Quick stats bar */}
@@ -159,77 +122,6 @@ export default function DashboardPage() {
           🏆 Leaderboard
         </Link>
       </div>
-
-      {/* Upload question form */}
-      {showUpload && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-8 shadow-sm">
-          <h2 className="font-bold text-slate-800 mb-4">Upload a question</h2>
-          {uploadMsg && (
-            <div className={`mb-4 p-3 rounded-lg text-sm ${uploadMsg.includes("success") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
-              {uploadMsg}
-            </div>
-          )}
-          <form onSubmit={handleUploadSubmit} className="space-y-4">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Title</label>
-                <input value={qForm.title} onChange={(e) => setQForm((p) => ({ ...p, title: e.target.value }))} required placeholder="Question title" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Subject</label>
-                <input value={qForm.subject} onChange={(e) => setQForm((p) => ({ ...p, subject: e.target.value }))} placeholder="Maths, Physics…" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400" />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium text-slate-600 mb-1 block">Description / question body</label>
-              <textarea value={qForm.description} onChange={(e) => setQForm((p) => ({ ...p, description: e.target.value }))} required rows={2} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400 resize-none" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {qForm.options.map((opt, i) => (
-                <div key={i}>
-                  <label className="text-xs font-medium text-slate-600 mb-1 block">Option {i + 1}</label>
-                  <input value={opt} onChange={(e) => handleOptionChange(i, e.target.value)} placeholder={`Option ${i + 1}`} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400" />
-                </div>
-              ))}
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Correct answer</label>
-                <input value={qForm.correct_option} onChange={(e) => setQForm((p) => ({ ...p, correct_option: e.target.value }))} required placeholder="Exact text of correct option" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Difficulty</label>
-                <select value={qForm.difficulty} onChange={(e) => setQForm((p) => ({ ...p, difficulty: e.target.value }))} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400">
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-1 block">Course</label>
-                <select value={qForm.course_id} onChange={(e) => setQForm((p) => ({ ...p, course_id: e.target.value }))} required className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400">
-                  <option value="">Select course</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>{c.title}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button type="submit" disabled={uploading} className="px-5 py-2 rounded-lg bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 transition-colors disabled:opacity-60">
-                {uploading ? "Uploading…" : "Upload question"}
-              </button>
-              <button type="button" onClick={() => setShowUpload(false)} className="px-5 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors">
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* My enrolled courses */}
       {myCourses.length > 0 && (

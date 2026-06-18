@@ -12,7 +12,7 @@ from app.services import analytics_service
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 
 
-# ── START QUIZ ─────────────────────────────────────────────────
+# ── START QUIZ ────────────────────────────────────────────────
 @router.post("/start/{course_id}")
 def start_quiz(
     course_id: int,
@@ -29,6 +29,17 @@ def start_quiz(
             detail="No questions found for this course"
         )
 
+    # ✅ Cancel any previous active session for this user+course
+    # so retrying never leaves a zombie session
+    old_sessions = db.query(QuizSession).filter(
+        QuizSession.user_id  == user.id,
+        QuizSession.course_id == course_id,
+        QuizSession.status   == "active"
+    ).all()
+    for old in old_sessions:
+        old.status = "cancelled"
+    db.commit()
+
     session = QuizSession(
         user_id=user.id,
         course_id=course_id,
@@ -39,7 +50,6 @@ def start_quiz(
     db.commit()
     db.refresh(session)
 
-    # Return questions WITHOUT correct_option (don't leak answers!)
     q_list = []
     for q in questions:
         q_list.append({
@@ -52,22 +62,21 @@ def start_quiz(
         })
 
     return {
-        "quiz_session_id":  session.id,
-        "course_id":        course_id,
-        "total_questions":  len(questions),
-        "questions":        q_list,
-        "message":          "Quiz started — good luck!"
+        "quiz_session_id": session.id,
+        "course_id":       course_id,
+        "total_questions": len(questions),
+        "questions":       q_list,
+        "message":         "Quiz started — good luck!"
     }
 
 
-# ── SUBMIT QUIZ ────────────────────────────────────────────────
+# ── SUBMIT QUIZ ───────────────────────────────────────────────
 @router.post("/submit", response_model=QuizSubmitResponse)
 def submit_quiz(
     data: QuizSubmitRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    # 1. Validate session belongs to this user and is still active
     session = db.query(QuizSession).filter(
         QuizSession.id == data.quiz_session_id
     ).first()
@@ -78,37 +87,57 @@ def submit_quiz(
     if session.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not your quiz session")
 
+    # ✅ If already completed, return the existing result instead of erroring
+    # This handles the case where the API call succeeded but the
+    # frontend got a network error and retried
     if session.status == "completed":
-        raise HTTPException(status_code=400, detail="Quiz already submitted")
+        existing_answers = db.query(Answer).filter(
+            Answer.quiz_session_id == session.id
+        ).all()
 
-    # 2. Score each answer
+        correct = sum(1 for a in existing_answers if a.is_correct)
+        wrong   = len(existing_answers) - correct
+        total_t = sum(a.time_taken_seconds for a in existing_answers)
+        attempted = len(existing_answers)
+
+        return QuizSubmitResponse(
+            quiz_session_id=session.id,
+            user_id=user.id,
+            total_score=session.score,
+            correct=correct,
+            wrong=wrong,
+            accuracy_pct=round((correct / attempted) * 100, 2) if attempted else 0.0,
+            total_time_secs=round(total_t, 2),
+            avg_time_secs=round(total_t / attempted, 2) if attempted else 0.0,
+        )
+
+    # Score each answer
     correct_count = 0
     wrong_count   = 0
     total_score   = 0
     total_time    = 0.0
 
     for submitted in data.answers:
+        # Skip blank answers (skipped questions)
+        if not submitted.answer.strip():
+            wrong_count += 1
+            continue
+
         question = db.query(Question).filter(
-            Question.id == submitted.question_id,
-            Question.course_id == session.course_id   # must be from this course
+            Question.id        == submitted.question_id,
+            Question.course_id == session.course_id
         ).first()
 
         if not question:
-            continue  # skip invalid question ids
+            continue
 
         is_correct = (
             submitted.answer.strip().lower() ==
             question.correct_option.strip().lower()
         )
 
-        # Score per difficulty
         if is_correct:
-            if question.difficulty == "easy":
-                pts = 5
-            elif question.difficulty == "hard":
-                pts = 20
-            else:
-                pts = 10   # medium (default)
+            pts = {"easy": 5, "hard": 20}.get(question.difficulty, 10)
             correct_count += 1
         else:
             pts = 0
@@ -128,14 +157,17 @@ def submit_quiz(
         )
         db.add(ans)
 
-    # 3. Close the session
-    session.score   = total_score
-    session.status  = "completed"
+    # Close session
+    session.score    = total_score
+    session.status   = "completed"
     session.ended_at = datetime.now(timezone.utc)
     db.commit()
 
-    # 4. Recalculate analytics (background-safe — runs in same request for now)
-    analytics_service.recalculate(db, user.id)
+    # Recalculate analytics
+    try:
+        analytics_service.recalculate(db, user.id)
+    except Exception:
+        pass   # never let analytics crash block the response
 
     attempted = correct_count + wrong_count
     avg_time  = round(total_time / attempted, 2) if attempted else 0.0
