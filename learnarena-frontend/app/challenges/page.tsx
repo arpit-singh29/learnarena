@@ -1,7 +1,7 @@
 "use client"
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/context/AuthContext"
@@ -21,14 +21,7 @@ const ELO_RANK_STYLE: Record<string, string> = {
   Diamond:  "bg-purple-100 text-purple-800",
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  pending:   "bg-amber-100 text-amber-700",
-  active:    "bg-blue-100 text-blue-700",
-  completed: "bg-emerald-100 text-emerald-700",
-  declined:  "bg-red-100 text-red-600",
-}
-
-export default function ChallengesPage() {
+function ChallengesContent() {
   const { user, loading } = useAuth()
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -124,8 +117,6 @@ export default function ChallengesPage() {
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-black text-slate-900">⚔️ Challenge Arena</h1>
-
-        {/* ELO badge */}
         {elo && (
           <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm ${ELO_RANK_STYLE[elo.rank] ?? "bg-slate-100 text-slate-700"}`}>
             <span>{elo.rank}</span>
@@ -169,7 +160,6 @@ export default function ChallengesPage() {
             </div>
           </div>
 
-          {/* Mode selector */}
           <div>
             <label className="text-xs font-semibold text-slate-500 mb-2 block">Battle mode</label>
             <div className="grid grid-cols-3 gap-2">
@@ -177,9 +167,7 @@ export default function ChallengesPage() {
                 <button key={key} type="button"
                   onClick={() => setForm(f => ({ ...f, mode: key }))}
                   className={`p-3 rounded-xl border-2 text-center transition-all ${
-                    form.mode === key
-                      ? "border-brand-500 bg-brand-50"
-                      : "border-slate-200 hover:border-slate-300"
+                    form.mode === key ? "border-brand-500 bg-brand-50" : "border-slate-200 hover:border-slate-300"
                   }`}>
                   <p className="text-xl mb-1">{info.icon}</p>
                   <p className={`text-xs font-bold ${form.mode === key ? "text-brand-700" : "text-slate-700"}`}>{info.label}</p>
@@ -205,7 +193,7 @@ export default function ChallengesPage() {
         </form>
       </div>
 
-      {/* Pending — need action */}
+      {/* Pending */}
       {pending.length > 0 && (
         <div className="mb-6">
           <h2 className="font-bold text-slate-700 mb-3">📬 Pending ({pending.length})</h2>
@@ -246,7 +234,7 @@ export default function ChallengesPage() {
         </div>
       )}
 
-      {/* Active — go play */}
+      {/* Active */}
       {active.length > 0 && (
         <div className="mb-6">
           <h2 className="font-bold text-slate-700 mb-3">🟢 Active — your turn ({active.length})</h2>
@@ -318,5 +306,17 @@ export default function ChallengesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ChallengesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin"/>
+      </div>
+    }>
+      <ChallengesContent />
+    </Suspense>
   )
 }
